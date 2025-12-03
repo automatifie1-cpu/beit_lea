@@ -1,4 +1,4 @@
-def check_if_phone_number_exists(phone_number):
+def check_if_phone_number_exists(phone_number) -> bool:
     pass
 
 
@@ -9,5 +9,5 @@ def add_phone_number(phone_number):
 
 
 
-def new_request(phone_number, message_data):
+def add_new_request(phone_number, message_data):
     pass
