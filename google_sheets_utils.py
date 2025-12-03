@@ -3,7 +3,7 @@ def check_if_phone_number_exists(phone_number) -> bool:
 
 
 
-
+#לא חובה 
 def add_phone_number(phone_number):
     pass
 
