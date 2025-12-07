@@ -1,6 +1,6 @@
 import requests
-from typing import Dict, Any
 from config import PHONE_NUMBER_ID, WHATSAPP_TOKEN
+from typing import Tuple, Optional, Dict, Any
 import traceback
 
 # Minimal, focused helper module for sending WhatsApp messages and contacts.
@@ -12,6 +12,50 @@ headers = {
     "Content-Type": "application/json",
 }
 TIMEOUT = 15
+
+
+def extract_message_info(event_data: Dict[str, Any]) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    מחלצת את מספר השולח, תוכן ההודעה (אם קיים), ואת מזהה ההודעה (ID) מאירוע Webhook של WhatsApp.
+
+    Args:
+        event_data: גוף ה-JSON המלא שהתקבל מה-API Gateway/Webhook.
+
+    Returns:
+        (from_number, message_body, message_id): מחרוזות או None אם לא נמצאה הודעת טקסט תקינה.
+    """
+    
+    # נווט בבטחה דרך המבנה המקונן
+    for entry in event_data.get("entry", []):
+        for change in entry.get("changes", []):
+            value = change.get("value", {})
+            
+            # ודא שמדובר באירוע הודעה ממוצר WhatsApp
+            if value.get("messaging_product") == "whatsapp":
+                
+                for message in value.get("messages", []):
+                    msg_type = message.get("type")
+                    
+                    # חלץ את הנתונים הבסיסיים
+                    from_number = message.get("from")
+                    msg_id = message.get("id")
+                    
+                    # אם זו הודעת טקסט, חלץ את הגוף
+                    if msg_type == "text":
+                        message_body = message.get("text", {}).get("body")
+                        
+                        # החזר את הנתונים
+                        if from_number and message_body:
+                            return from_number, message_body, msg_id
+                            
+                    # אם זו הודעה מסוג אחר (למשל, image, location, document), אנחנו מחזירים None עבור הטקסט
+                    else:
+                        print(f"INFO: Ignoring non-text message of type: {msg_type}")
+                        # אפשר להחזיר את המספר וה-ID גם להודעות שאינן טקסט אם נצטרך לטפל בהן מאוחר יותר
+                        return from_number, None, msg_id
+                        
+    # אם לא נמצאה הודעה רלוונטית בכל האירועים, החזר None
+    return None, None, None
 
 
 def _post(payload: dict):
@@ -31,15 +75,7 @@ def _post(payload: dict):
             data = {"raw": r.text}
         return (200 <= r.status_code < 300), data
     except requests.RequestException as e:
-        tb = traceback.TracebackException.from_exception(e)
-        frame = tb.stack[-1] if tb.stack else None
-        log_event(
-            'whatsapp_api_error',
-            error=str(e),
-            file=getattr(frame, 'filename', None),
-            line=getattr(frame, 'lineno', None),
-            func=getattr(frame, 'name', None),
-        )
+        print(f"WHATSAPP_API_ERROR: {str(e)}")
         return False, {"error": str(e)}
 
 
@@ -205,17 +241,7 @@ def send_message(to: str, text: str):
         return _post(build_text_payload(to, text))
     except ValueError as e:
         # Handle empty text or invalid input
-        tb = traceback.TracebackException.from_exception(e)
-        frame = tb.stack[-1] if tb.stack else None
-        log_event(
-            'send_message_validation_error',
-            error=str(e),
-            to=to,
-            text_empty=not text or not text.strip(),
-            file=getattr(frame, 'filename', None),
-            line=getattr(frame, 'lineno', None),
-            func=getattr(frame, 'name', None),
-        )
+        print(f"SEND_MESSAGE_VALIDATION_ERROR: {str(e)}")
         return False, {"error": str(e)}
 
 
@@ -243,18 +269,7 @@ def send_contact(
         )
     except ValueError as e:
         # Handle validation errors in contact payload
-        tb = traceback.TracebackException.from_exception(e)
-        frame = tb.stack[-1] if tb.stack else None
-        log_event(
-            'send_contact_validation_error',
-            error=str(e),
-            to=to,
-            name=name,
-            phone_number=phone_number,
-            file=getattr(frame, 'filename', None),
-            line=getattr(frame, 'lineno', None),
-            func=getattr(frame, 'name', None),
-        )
+        print(f"SEND_CONTACT_VALIDATION_ERROR: {str(e)}")
         return False, {"error": str(e)}
 
 
