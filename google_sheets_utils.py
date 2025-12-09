@@ -43,7 +43,7 @@ def check_user_in_sheets(phone_number):
     שולח בקשה ל-Apps Script לבדוק אם המשתמש קיים
     ומחזיר את נתוני המשתמש (שם ושפה) אם נמצא.
     """
-    url = APPS_SCRIPT_URL
+    url = getattr(config, 'APPS_SCRIPT_URL', None)
     if not url:
         print("ERROR: APPS_SCRIPT_URL אינו מוגדר.")
         return False, None
@@ -68,9 +68,32 @@ def check_user_in_sheets(phone_number):
             return False, None # המשתמש לא נמצא
         
         # אם קיבלנו שם ושפה, המשתמש קיים
-        return [True, sheet_data]
+        return True, sheet_data
 
     except requests.exceptions.RequestException as e:
         print(f"❌ ERROR: כשל בקריאה מ-Apps Script: {e}")
-        return [False, None]
+        return False, None
 
+
+def new_request(phone_number, message_data):
+    pass
+
+if __name__ == "__main__":
+    
+    # 1. נניח שזה שלב הרישום - אנחנו מכניסים מידע למאגר
+    # חשוב: וואטסאפ שולח מספרים בפורמט בינלאומי ללא פלוס (למשל 972)
+    my_phone = "972501234567" 
+    
+    # הוספת משתמש לדוגמה (תריץ את זה פעם אחת כדי שיהיה מידע)
+    add_phone_number(my_phone, "דני דניאל", "he")
+    
+    # 2. נניח שזה הקוד שרץ ב-AWS Lambda כשמתקבלת הודעה
+    incoming_phone = "972501234567" # המספר שהגיע מה-Webhook
+    
+    exists, user_data = check_user_in_sheets(incoming_phone)
+    
+    if exists:
+        print(f"משתמש מאומת! שם: {user_data['name']}, שפה: {user_data['language']}")
+        # כאן הבוט ימשיך לעבוד בשפה של המשתמש
+    else:
+        print("משתמש לא רשום. נא להעביר לתהליך הרשמה.")
