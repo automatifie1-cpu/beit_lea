@@ -1,18 +1,9 @@
-from config import APPS_SCRIPT_URL,KEY_PATH
+from config import APPS_SCRIPT_URL
 import requests
 import json
-import time
-import firebase_admin
-from firebase_admin import credentials
-from firebase_admin import firestore
-
 # הגדרות
 COLLECTION_NAME = 'users'
 
-def initialize_firebase():
-    if not firebase_admin._apps:
-        cred = credentials.Certificate(KEY_PATH)
-        firebase_admin.initialize_app(cred)
 
 
 def send_structured_data(name: str, inquiry: str, phone: str):
@@ -47,48 +38,41 @@ def send_structured_data(name: str, inquiry: str, phone: str):
         print(f"❌ ERROR: כשל שליחה ל-Apps Script: {e}")
 
 
-def check_if_phone_number_exists(phone_number):
-
-    initialize_firebase()
-    db = firestore.client()
-    
-    # גישה ישירה למסמך לפי מספר הטלפון - הכי מהיר שיש
-    doc_ref = db.collection(COLLECTION_NAME).document(phone_number)
-    doc = doc_ref.get()
-    
-    if doc.exists:
-        # המסמך קיים, נחזיר את המידע כ-Dictionary
-        user_info = doc.to_dict()
-        return True, user_info
-    else:
-        # המסמך לא קיים
+def check_user_in_sheets(phone_number):
+    """
+    שולח בקשה ל-Apps Script לבדוק אם המשתמש קיים
+    ומחזיר את נתוני המשתמש (שם ושפה) אם נמצא.
+    """
+    url = getattr(config, 'APPS_SCRIPT_URL', None)
+    if not url:
+        print("ERROR: APPS_SCRIPT_URL אינו מוגדר.")
         return False, None
 
-
-
-
-def add_phone_number(phone_number, name, language):
-    """
-    יוצר משתמש חדש כאשר ה-ID של המסמך הוא מספר הטלפון.
-    מתאים לשלב הרישום או הקמת המאגר.
-    """
-    initialize_firebase()
-    db = firestore.client()
-    
-    # שימוש בטלפון בתור ה-ID של המסמך
-    doc_ref = db.collection(COLLECTION_NAME).document(phone_number)
-    
-    # הנתונים שנשמור
-    user_data = {
-        'name': name,
-        'language': language,
-        'created_at': firestore.SERVER_TIMESTAMP # מומלץ לשמור תאריך יצירה
+    # Payload לקריאת נתונים
+    payload = {
+        "action": "read_user", # פעולה חדשה שנצטרך להוסיף ב-Apps Script
+        "phone": phone_number
     }
     
-    # set שומר או דורס את המידע הקיים
-    doc_ref.set(user_data)
-    print(f"המשתמש {name} עם טלפון {phone_number} נשמר בהצלחה.")
+    print(f"INFO: מנסה לקרוא נתונים למספר {phone_number} מגיליון")
 
+    try:
+        # שליחת בקשת POST עם הגדרת Timeout בטוחה
+        response = requests.post(url, json=payload, timeout=10)
+        response.raise_for_status() # יזרוק שגיאה אם הסטטוס אינו 200
+        
+        # המידע המוחזר מה-Apps Script
+        sheet_data = response.json() 
+        
+        if sheet_data.get("status") == "not_found":
+            return False, None # המשתמש לא נמצא
+        
+        # אם קיבלנו שם ושפה, המשתמש קיים
+        return True, sheet_data
+
+    except requests.exceptions.RequestException as e:
+        print(f"❌ ERROR: כשל בקריאה מ-Apps Script: {e}")
+        return False, None
 
 
 def new_request(phone_number, message_data):
@@ -106,7 +90,7 @@ if __name__ == "__main__":
     # 2. נניח שזה הקוד שרץ ב-AWS Lambda כשמתקבלת הודעה
     incoming_phone = "972501234567" # המספר שהגיע מה-Webhook
     
-    exists, user_data = check_if_phone_number_exists(incoming_phone)
+    exists, user_data = check_user_in_sheets(incoming_phone)
     
     if exists:
         print(f"משתמש מאומת! שם: {user_data['name']}, שפה: {user_data['language']}")
