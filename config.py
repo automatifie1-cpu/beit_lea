@@ -16,6 +16,9 @@ APPS_SCRIPT_URL = os.environ.get("APPS_SCRIPT_URL", "")
 # Firebase Configuration
 KEY_PATH = os.environ.get("KEY_PATH", "")
 
+# OpenAI Configuration
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+
 # WhatsApp API Configuration
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "")
 PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID", "")
