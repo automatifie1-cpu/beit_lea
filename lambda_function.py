@@ -4,23 +4,26 @@ import config
 from whatsApp import (
     extract_message_info, 
     send_message, 
-    send_contact
+    send_contact,
+    send_typing_state
 )
 from local_storage import check_user_local
 from google_sheets_utils import send_structured_data
+from ai_chat import chat_with_ai, process_confirmation
+import conversation_state as conv_state
 
 # הגדרות שפה
 RESPONSES = {
     "he": {
         "welcome": "שלום {name}, איך אפשר לעזור?",
-        "not_found_msg": "שלום {name}, המספר שלך אינו רשום במערכת שלנו.",
+        "not_found_msg": "שלום, המספר שלך אינו רשום במערכת שלנו.",
         "not_found_policy": " אנא עיין בתקנון שלנו:",
         "contact_person_name": "סול - איש קשר לבירורים",
         "thank_you": "תודה על פנייתך, העניין נרשם לטיפול.",
     },
     "en": {
         "welcome": "Hello {name}, how can I assist you?",
-        "not_found_msg": "Hi {name}, your number is not registered in our system.",
+        "not_found_msg": "Hi, your number is not registered in our system.",
         "not_found_policy": " Please see our terms and conditions:",
         "contact_person_name": "Sol - Inquiry Contact Person",
         "thank_you": "Thank you for your inquiry, it has been logged.",
@@ -77,17 +80,48 @@ def lambda_handler(event, context):
             lang_res = RESPONSES.get(user_lang, RESPONSES["default"])
             
             # ============================================
-            # שלב ב': שליחת תגובה
+            # שלב ב': שליחת תגובה - בוט AI
             # ============================================
             if exists:
-                # --- משתמש רשום ---
+                # --- משתמש רשום - שיחה עם AI ---
                 print(f"✅ משתמש רשום: {user_name}")
-                welcome_msg = lang_res["welcome"].format(name=user_name)
                 
-                # תיעוד בגיליון
-                send_structured_data(user_name, message_text, from_number)
+                # שלח אינדיקציית הקלדה
+                if msg_id:
+                    send_typing_state(msg_id)
                 
-                send_message(from_number, lang_res["thank_you"])
+                # בדוק את מצב השיחה הנוכחי
+                current_state = conv_state.get_state(from_number)
+                print(f"📊 מצב שיחה: {current_state}")
+                
+                if current_state == "confirming_request":
+                    # המשתמש צריך לאשר/לדחות פנייה
+                    response_text, is_confirmed, request_text = process_confirmation(
+                        from_number, 
+                        message_text, 
+                        user_lang
+                    )
+                    
+                    if is_confirmed and request_text:
+                        # הפנייה אושרה - שלח לגיליון
+                        print(f"📝 פנייה אושרה: {request_text}")
+                        send_structured_data(user_name, request_text, from_number)
+                    
+                    send_message(from_number, response_text)
+                    
+                else:
+                    # שיחה רגילה עם AI
+                    response_text, pending_request = chat_with_ai(
+                        from_number,
+                        message_text,
+                        user_name,
+                        user_lang
+                    )
+                    
+                    if pending_request:
+                        print(f"⏳ פנייה מחכה לאישור: {pending_request}")
+                    
+                    send_message(from_number, response_text)
                 
             else:
                 # --- משתמש לא רשום ---
