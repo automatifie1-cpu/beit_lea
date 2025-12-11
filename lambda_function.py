@@ -13,14 +13,14 @@ from google_sheets_utils import send_structured_data
 RESPONSES = {
     "he": {
         "welcome": "שלום {name}, איך אפשר לעזור?",
-        "not_found_msg": "שלום, המספר שלך אינו רשום במערכת שלנו.",
+        "not_found_msg": "שלום {name}, המספר שלך אינו רשום במערכת שלנו.",
         "not_found_policy": " אנא עיין בתקנון שלנו:",
         "contact_person_name": "סול - איש קשר לבירורים",
         "thank_you": "תודה על פנייתך, העניין נרשם לטיפול.",
     },
     "en": {
         "welcome": "Hello {name}, how can I assist you?",
-        "not_found_msg": "Hi, your number is not registered in our system.",
+        "not_found_msg": "Hi {name}, your number is not registered in our system.",
         "not_found_policy": " Please see our terms and conditions:",
         "contact_person_name": "Sol - Inquiry Contact Person",
         "thank_you": "Thank you for your inquiry, it has been logged.",
@@ -83,7 +83,6 @@ def lambda_handler(event, context):
                 # --- משתמש רשום ---
                 print(f"✅ משתמש רשום: {user_name}")
                 welcome_msg = lang_res["welcome"].format(name=user_name)
-                send_message(from_number, welcome_msg)
                 
                 # תיעוד בגיליון
                 send_structured_data(user_name, message_text, from_number)
