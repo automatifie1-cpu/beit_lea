@@ -12,6 +12,9 @@ from google_sheets_utils import send_structured_data
 from ai_chat import chat_with_ai, process_confirmation
 import conversation_state as conv_state
 
+# מניעת כפילויות - זוכר הודעות שכבר טופלו
+processed_messages = set()
+
 # הגדרות שפה
 RESPONSES = {
     "he": {
@@ -64,6 +67,16 @@ def lambda_handler(event, context):
                 return {"statusCode": 200, "body": "Event processed"}
             
             print(f"📩 הודעה נכנסת מ-{from_number}: {message_text}")
+
+            # מניעת כפילויות - בדוק אם כבר טיפלנו בהודעה הזו
+            if msg_id in processed_messages:
+                print(f"⚠️ הודעה כפולה, מתעלם: {msg_id}")
+                return {"statusCode": 200, "body": "Duplicate ignored"}
+            processed_messages.add(msg_id)
+            
+            # מגביל את הזיכרון - שומר רק 1000 הודעות אחרונות
+            if len(processed_messages) > 1000:
+                processed_messages.clear()
 
             # שליחת מצב הקלדה מיידית
             if msg_id:
