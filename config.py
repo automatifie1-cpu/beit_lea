@@ -1,4 +1,14 @@
 import os
+from pathlib import Path
+
+# Load .env file if exists (for local development)
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).parent / '.env'
+    if env_path.exists():
+        load_dotenv(env_path)
+except ImportError:
+    pass  # python-dotenv not installed (Lambda environment)
 
 # Google sheets configuration
 APPS_SCRIPT_URL = os.environ.get("APPS_SCRIPT_URL", "")
