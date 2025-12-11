@@ -9,8 +9,7 @@ from whatsApp import (
 )
 from local_storage import check_user_local
 from google_sheets_utils import send_structured_data
-from ai_chat import chat_with_ai, process_confirmation
-import conversation_state as conv_state
+from ai_chat import chat_with_ai, process_confirmation, has_pending_request
 
 # מניעת כפילויות - זוכר הודעות שכבר טופלו
 processed_messages = set()
@@ -107,11 +106,10 @@ def lambda_handler(event, context):
                 if msg_id:
                     send_typing_state(msg_id)
                 
-                # בדוק את מצב השיחה הנוכחי
-                current_state = conv_state.get_state(from_number)
-                print(f"📊 מצב שיחה: {current_state}")
-                
-                if current_state == "confirming_request":
+                # בדוק אם יש פנייה שמחכה לאישור
+                if has_pending_request(from_number):
+                    print(f"📊 יש פנייה שמחכה לאישור")
+                    
                     # המשתמש צריך לאשר/לדחות פנייה
                     response_text, is_confirmed, request_text = process_confirmation(
                         from_number, 

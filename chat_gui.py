@@ -5,8 +5,8 @@
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
 import threading
-from ai_chat import chat_with_ai, process_confirmation
-import conversation_state as conv_state
+from ai_chat import chat_with_ai, process_confirmation, has_pending_request
+from google_sheets_utils import send_structured_data
 
 # הגדרות ברירת מחדל
 DEFAULT_PHONE = "972542543420"
@@ -175,9 +175,7 @@ class ChatGUI:
     def process_message(self, message: str):
         """עיבוד ההודעה עם AI"""
         try:
-            current_state = conv_state.get_state(self.phone_number)
-            
-            if current_state == "confirming_request":
+            if has_pending_request(self.phone_number):
                 # מחכים לאישור
                 response_text, is_confirmed, request_text = process_confirmation(
                     self.phone_number,
@@ -188,6 +186,11 @@ class ChatGUI:
                 self.root.after(0, lambda: self.add_message("בוט", response_text, "bot"))
                 
                 if is_confirmed and request_text:
+                    # שלח לגיליון
+                    try:
+                        send_structured_data(self.user_name, request_text, self.phone_number)
+                    except Exception as e:
+                        print(f"❌ שגיאה בשליחה לגיליון: {e}")
                     self.root.after(0, lambda: self.add_system_message(f"✅ פנייה נשלחה בהצלחה:\n\"{request_text}\""))
                     
             else:
@@ -205,12 +208,7 @@ class ChatGUI:
                     self.root.after(0, lambda: self.add_message("", f"\"{pending_request}\"", "pending"))
                     
             # עדכון סטטוס
-            state = conv_state.get_state(self.phone_number)
-            state_text = {
-                "chatting": "שיחה פעילה",
-                "confirming_request": "מחכה לאישור פנייה",
-                "completed": "הושלם"
-            }.get(state, state)
+            state_text = "מחכה לאישור פנייה" if has_pending_request(self.phone_number) else "שיחה פעילה"
             
             self.root.after(0, lambda: self.status_label.config(text=f"מצב: {state_text}", fg="#00ff88"))
             
@@ -222,7 +220,10 @@ class ChatGUI:
     def reset_conversation(self):
         """איפוס השיחה"""
         self.phone_number = self.phone_entry.get() or DEFAULT_PHONE
-        conv_state.clear_conversation(self.phone_number)
+        # מחיקת פנייה ממתינה אם יש
+        from ai_chat import pending_requests
+        if self.phone_number in pending_requests:
+            del pending_requests[self.phone_number]
         
         self.chat_display.configure(state=tk.NORMAL)
         self.chat_display.delete(1.0, tk.END)

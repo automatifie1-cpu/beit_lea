@@ -1,15 +1,18 @@
 """
 מודול AI Chat - ניהול שיחות חכמות עם משתמשים.
 משתמש ב-OpenAI לניהול שיחה טבעית ולזיהוי פניות.
+גרסה ללא היסטוריה - מותאם ל-Lambda.
 """
 import json
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict
 from openai import OpenAI
 from config import OPENAI_API_KEY
-import conversation_state as conv_state
 
 # יצירת לקוח OpenAI
 client = OpenAI(api_key=OPENAI_API_KEY)
+
+# זיכרון זמני לפניות שמחכות לאישור (עובד בתוך אותו Lambda container)
+pending_requests: Dict[str, str] = {}
 
 # הגדרת ה-System Prompt לבוט
 SYSTEM_PROMPT_HE = """אתה נציג שירות לקוחות ידידותי ומקצועי של "בית לאה" - עמותה.
@@ -113,6 +116,7 @@ def chat_with_ai(
 ) -> Tuple[str, Optional[str]]:
     """
     מנהל שיחה עם המשתמש דרך OpenAI.
+    גרסה ללא היסטוריה - כל הודעה עומדת בפני עצמה.
     
     Args:
         phone_number: מספר הטלפון של המשתמש
@@ -123,18 +127,12 @@ def chat_with_ai(
     Returns:
         (תשובה לשלוח למשתמש, פנייה לאישור או None)
     """
-    # הוסף את ההודעה של המשתמש להיסטוריה
-    conv_state.add_message(phone_number, "user", user_message)
-    
-    # הכן את ההודעות לשליחה ל-OpenAI
-    # הערה: OpenAI עושה prompt caching אוטומטי לפרומפטים מעל 1024 טוקנים
+    # הכן את ההודעות לשליחה ל-OpenAI (בלי היסטוריה)
     messages = [
         {"role": "system", "content": get_system_prompt(language)},
-        {"role": "system", "content": f"שם המשתמש: {user_name}. פנה אליו בשמו בתחילת השיחה."}
+        {"role": "system", "content": f"שם המשתמש: {user_name}. פנה אליו בשמו בתחילת השיחה."},
+        {"role": "user", "content": user_message}
     ]
-    
-    # הוסף את היסטוריית השיחה
-    messages.extend(conv_state.get_messages(phone_number))
     
     try:
         # שליחה ל-OpenAI
@@ -142,7 +140,7 @@ def chat_with_ai(
             model="gpt-4o-mini",  # מודל מהיר וזול
             messages=messages,
             max_tokens=500,
-            temperature=0.5
+            temperature=0.3
         )
         
         ai_response = response.choices[0].message.content
@@ -150,13 +148,9 @@ def chat_with_ai(
         # נתח את התשובה לחילוץ פנייה אפשרית
         clean_response, pending_request = parse_pending_request(ai_response)
         
-        # שמור את התשובה בהיסטוריה (בלי התגיות)
-        conv_state.add_message(phone_number, "assistant", clean_response)
-        
-        # אם יש פנייה, עדכן את המצב
+        # אם יש פנייה, שמור בזיכרון הזמני
         if pending_request:
-            conv_state.set_state(phone_number, "confirming_request")
-            conv_state.set_pending_request(phone_number, pending_request)
+            pending_requests[phone_number] = pending_request
         
         return clean_response, pending_request
         
@@ -183,7 +177,7 @@ def process_confirmation(
         (הודעה לשלוח, האם אושר, טקסט הפנייה אם אושר)
     """
     user_lower = user_message.lower().strip()
-    pending = conv_state.get_pending_request(phone_number)
+    pending = pending_requests.get(phone_number)
     
     # מילות אישור
     confirm_words_he = ["כן", "אישור", "לאשר", "בסדר", "אוקי", "ok", "yes", "נכון", "מאשר"]
@@ -197,8 +191,8 @@ def process_confirmation(
     is_rejected = any(word in user_lower for word in (reject_words_he + reject_words_en))
     
     if is_confirmed and pending:
-        # אישור - נאפס לשיחה חדשה
-        conv_state.reset_for_new_request(phone_number)
+        # אישור - מחק מהזיכרון
+        del pending_requests[phone_number]
         
         if language == "he":
             return "תודה רבה! הפנייה נרשמה בהצלחה ותטופל בהקדם. 🙏\n\nאם יש משהו נוסף, אני כאן.", True, pending
@@ -206,9 +200,9 @@ def process_confirmation(
             return "Thank you! Your request has been submitted and will be handled soon. 🙏\n\nIf there's anything else, I'm here.", True, pending
     
     elif is_rejected:
-        # דחייה - חזרה לשיחה
-        conv_state.set_state(phone_number, "chatting")
-        conv_state.set_pending_request(phone_number, None)
+        # דחייה - מחק מהזיכרון
+        if phone_number in pending_requests:
+            del pending_requests[phone_number]
         
         if language == "he":
             return "בסדר, הפנייה בוטלה. ספר לי שוב מה הבעיה ואנסח מחדש.", False, None
@@ -221,3 +215,8 @@ def process_confirmation(
             return f"לא הבנתי. האם לאשר ולהגיש את הפנייה?\n\n\"{pending}\"\n\nענה 'כן' לאישור או 'לא' לביטול.", False, None
         else:
             return f"I didn't understand. Should I confirm and submit the request?\n\n\"{pending}\"\n\nReply 'yes' to confirm or 'no' to cancel.", False, None
+
+
+def has_pending_request(phone_number: str) -> bool:
+    """בודק אם יש פנייה שמחכה לאישור."""
+    return phone_number in pending_requests
