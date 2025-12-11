@@ -4,7 +4,8 @@ import config
 from whatsApp import (
     extract_message_info, 
     send_message, 
-    send_contact
+    send_contact,
+    send_typing_state
 )
 from local_storage import check_user_local
 from google_sheets_utils import send_structured_data
@@ -61,6 +62,10 @@ def lambda_handler(event, context):
                 return {"statusCode": 200, "body": "Event processed"}
             
             print(f"📩 הודעה נכנסת מ-{from_number}: {message_text}")
+
+            # שליחת מצב הקלדה מיידית
+            if msg_id:
+                send_typing_state(msg_id)
 
             # ============================================
             # שלב א': בדיקה בקובץ JSON מקומי
