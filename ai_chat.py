@@ -131,7 +131,7 @@ def chat_with_ai(
             model="gpt-4o-mini",  # מודל מהיר וזול
             messages=messages,
             max_tokens=500,
-            temperature=0.6
+            temperature=0.9
         )
         
         ai_response = response.choices[0].message.content
